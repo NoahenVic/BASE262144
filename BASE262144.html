@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BASE262144 Encoder/Decoder</title>
+  <style>
+    :root{--bg:#0b0f14;--panel:#111825;--fg:#e5e7eb;--muted:#94a3b8;--acc:#60a5fa;--acc2:#34d399;--warn:#f59e0b;--err:#f87171;--mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:linear-gradient(180deg,#0b0f14,#0d1420 20%,#0b0f14);color:var(--fg);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif}
+    header{padding:24px 20px 8px;display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+    h1{margin:0;font-weight:700;letter-spacing:.3px}
+    .badge{font-size:12px;padding:3px 8px;border-radius:999px;background:rgba(96,165,250,.12);color:#93c5fd;border:1px solid rgba(96,165,250,.35)}
+    main{max-width:1100px;margin:0 auto;padding:16px 20px 40px}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media (max-width:1000px){.grid{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid rgba(148,163,184,.15);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+    .card h2{margin:0;padding:14px 16px;border-bottom:1px solid rgba(148,163,184,.12);font-size:15px;color:#cbd5e1}
+    .card .body{padding:14px}
+    textarea{width:100%;min-height:220px;resize:vertical;background:#0b1220;color:var(--fg);border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:10px;font-family:var(--mono);font-size:13px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .row > *{flex:none}
+    .pill{padding:2px 8px;border-radius:999px;background:#0b1220;border:1px solid rgba(148,163,184,.25)}
+    .btn{appearance:none;border:1px solid rgba(148,163,184,.25);background:#0c1322;color:var(--fg);padding:9px 12px;border-radius:10px;font-weight:600;cursor:pointer;transition:transform .02s ease,background .2s}
+    .btn:hover{background:#0f1830}
+    .btn:active{transform:translateY(1px)}
+    .btn.acc{border-color:rgba(96,165,250,.45);background:rgba(96,165,250,.15)}
+    .btn.acc2{border-color:rgba(52,211,153,.45);background:rgba(52,211,153,.15)}
+    .btn.warn{border-color:rgba(245,158,11,.45);background:rgba(245,158,11,.15)}
+    .small{font-size:12px;color:var(--muted)}
+    .kbd{background:#0b1220;border:1px solid rgba(148,163,184,.35);border-bottom-width:2px;border-radius:6px;padding:2px 6px;font:12px var(--mono)}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BASE262144 Encoder/Decoder</h1>
+    <span class="badge">radix 262,144 • 2^18 symbols</span>
+  </header>
+  <main>
+    <section class="card">
+      <h2>Input</h2>
+      <div class="body">
+        <div class="row" style="margin-bottom:8px">
+          <input id="file" type="file" class="btn" />
+          <button class="btn" id="demo">Load demo</button>
+          <span class="pill" id="inStats">—</span>
+          <span class="pill" id="alphaStats">alphabet: —</span>
+        </div>
+        <textarea id="in" placeholder="Type/paste data here (text or BASE262144). Use ENCODE for UTF‑8 text → BASE262144, DECODE for BASE262144 → text/binary."></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="btn acc" id="encode">ENCODE →</button>
+          <button class="btn acc2" id="decode">← DECODE</button>
+          <button class="btn" id="copyIn">Copy</button>
+          <button class="btn warn" id="clearIn">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Output</h2>
+      <div class="body">
+        <div class="row" style="margin-bottom:8px">
+          <button class="btn" id="copyOut">Copy</button>
+          <button class="btn" id="downloadOut">Download</button>
+          <label class="small"><input type="checkbox" id="escape"> Use \u{...} escape</label>
+          <span class="pill" id="outStats">—</span>
+        </div>
+        <textarea id="out" placeholder="Encoded/decoded result appears here."></textarea>
+        <p class="small">Tip: this base uses one Unicode code point per <span class="kbd">18</span> bits. We map digit value <span class="kbd">v</span> to code point <span class="kbd">U+10000 + v</span>. A single leading header symbol encodes the number of padding bits (0..17).</p>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px">
+      <h2>How it works</h2>
+      <div class="body small">
+        <p><strong>Power‑of‑two base:</strong> 262,144 = 2^18. We pack the byte stream into a bit buffer, slice 18‑bit digits, and map them to a contiguous block of Unicode code points from U+10000..U+4FFFF (exactly 262,144 symbols). Many fonts won’t render these glyphs — that’s fine: they remain copyable and reversible.</p>
+        <p><strong>Header:</strong> The first digit stores padding bits count (0..17). During decode, these are removed before reconstructing bytes.</p>
+        <p><strong>Safety:</strong> Toggle <em>Use \u{...} escape</em> to export a plain‑ASCII representation like <code>\u{104A3}\u{1ABC0}…</code>.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  // ---------------- Alphabet (contiguous Unicode range) ----------------
+  const BASE = 262144;               // 2^18
+  const CP_START = 0x10000;          // U+10000 .. U+4FFFF inclusive (0x40000 code points)
+  const CP_END   = CP_START + BASE - 1;
+
+  function valToChar(v){ return String.fromCodePoint(CP_START + v); }
+  function charToVal(ch){
+    const cp = ch.codePointAt(0);
+    if (cp < CP_START || cp > CP_END) return -1;
+    return cp - CP_START;
+  }
+
+  // ---------------- Bit‑packing codec (18‑bit digits) ----------------
+  function encodeBase262144(bytes){
+    if (!bytes || bytes.length===0) return valToChar(0); // header only, pad=0
+
+    // Build bit buffer
+    let bitlen = bytes.length * 8;
+    let padBits = (18 - (bitlen % 18)) % 18; // 0..17
+    let totalBits = bitlen + padBits;
+
+    // Output digits array (values 0..262143) plus leading header digit for padBits
+    const outVals = [padBits];
+
+    // Consume bytes and emit 18‑bit chunks via rolling buffer
+    let acc = 0; // up to 31 bits safe in JS number
+    let accBits = 0;
+    const pushDigit = (val)=>{ outVals.push(val); };
+
+    for (let i=0;i<bytes.length;i++){
+      acc = (acc << 8) | (bytes[i] & 0xFF);
+      accBits += 8;
+      while (accBits >= 18){
+        const val = (acc >>> (accBits - 18)) & 0x3FFFF; // 18 bits
+        pushDigit(val);
+        accBits -= 18;
+      }
+    }
+
+    if (padBits){
+      // accBits currently holds the residual; pad with zeros and flush
+      const val = (acc << (18 - accBits)) & 0x3FFFF;
+      pushDigit(val);
+    }
+
+    // Map to chars
+    return outVals.map(valToChar).join('');
+  }
+
+  function decodeBase262144(text){
+    if (!text || text.length===0) return new Uint8Array();
+    // Read first code point: pad bits count
+    let idx = 0;
+    const first = text.codePointAt(0);
+    const firstLen = first > 0xFFFF ? 2 : 1; // surrogate pair length
+    const pad = first - CP_START; // header value as stored
+    if (pad < 0 || pad > 17) throw new Error('Invalid header (pad bits out of range)');
+    idx += firstLen;
+
+    let acc = 0, accBits = 0;
+    const bytes = [];
+
+    for (; idx < text.length;){
+      const cp = text.codePointAt(idx);
+      const chLen = cp > 0xFFFF ? 2 : 1;
+      idx += chLen;
+      if (cp < CP_START || cp > CP_END) throw new Error(`Invalid digit U+${cp.toString(16).toUpperCase()}`);
+      const val = cp - CP_START;
+
+      acc = (acc << 18) | val;
+      accBits += 18;
+      while (accBits >= 8){
+        const b = (acc >>> (accBits - 8)) & 0xFF;
+        bytes.push(b);
+        accBits -= 8;
+      }
+    }
+
+    // Remove padding bits from the tail if any
+    if (pad){
+      // Drop the padded zero bytes that came from tail bits; compute exact byte length
+      const totalBits = (textToDigitsLen(text) - 1) * 18; // minus header
+      const usefulBits = totalBits - pad;
+      const byteLen = usefulBits >>> 3;
+      return new Uint8Array(bytes.slice(0, byteLen));
+    }
+    return new Uint8Array(bytes);
+  }
+
+  function textToDigitsLen(text){
+    // counts number of base digits (code points) in the string
+    let n = 0;
+    for (let i=0;i<text.length;){
+      const cp = text.codePointAt(i);
+      i += (cp > 0xFFFF ? 2 : 1);
+      n++;
+    }
+    return n;
+  }
+
+  // ---------------- UI helpers ----------------
+  const $ = s => document.querySelector(s);
+  const enc = new TextEncoder();
+  const dec = new TextDecoder();
+
+  const elIn = $('#in');
+  const elOut = $('#out');
+  const elInStats = $('#inStats');
+  const elOutStats = $('#outStats');
+  const elAlphaStats = $('#alphaStats');
+  const elEscape = $('#escape');
+
+  elAlphaStats.textContent = `alphabet: U+${CP_START.toString(16).toUpperCase()}..U+${CP_END.toString(16).toUpperCase()} (${BASE} symbols)`;
+
+  function updateStats(){
+    elInStats.textContent = `input chars: ${codePointCount(elIn.value)}`;
+    elOutStats.textContent = `output chars: ${codePointCount(elOut.value)}`;
+  }
+  function codePointCount(s){
+    let n=0; for (let i=0;i<s.length;){ const cp = s.codePointAt(i); i += (cp>0xFFFF?2:1); n++; } return n;
+  }
+
+  function toEscaped(s){
+    let out = '';
+    for (let i=0;i<s.length;){
+      const cp = s.codePointAt(i);
+      i += (cp>0xFFFF?2:1);
+      out += `\\u{${cp.toString(16).toUpperCase()}}`;
+    }
+    return out;
+  }
+
+  function fromEscaped(s){
+    return s.replace(/\\u\{([0-9A-Fa-f]+)\}/g, (_,hex)=> String.fromCodePoint(parseInt(hex,16)));
+  }
+
+  $('#encode').onclick = () => {
+    try{
+      const bytes = enc.encode(elIn.value);
+      const t0 = performance.now();
+      const rawOut = encodeBase262144(bytes);
+      const out = elEscape.checked ? toEscaped(rawOut) : rawOut;
+      const t1 = performance.now();
+      elOut.value = out;
+      elOutStats.textContent = `output chars: ${codePointCount(rawOut)} • time: ${(t1-t0).toFixed(1)} ms`;
+    }catch(e){ alert('Encode error: '+e.message); }
+  };
+
+  $('#decode').onclick = () => {
+    try{
+      const input = elEscape.checked ? fromEscaped(elIn.value) : elIn.value;
+      const t0 = performance.now();
+      const bytes = decodeBase262144(input);
+      const t1 = performance.now();
+      try{ elOut.value = dec.decode(bytes); }
+      catch{ elOut.value = `[binary ${bytes.length} bytes]`; }
+      elOutStats.textContent = `bytes: ${bytes.length} • time: ${(t1-t0).toFixed(1)} ms`;
+    }catch(e){ alert('Decode error: '+e.message); }
+  };
+
+  $('#copyIn').onclick = () => navigator.clipboard.writeText(elIn.value);
+  $('#copyOut').onclick = () => navigator.clipboard.writeText(elOut.value);
+  $('#clearIn').onclick = () => { elIn.value=''; updateStats(); };
+  $('#demo').onclick = () => { elIn.value = 'ewa dikke monkey\n\nBASE262144 demo — encode me.'; updateStats(); };
+
+  $('#file').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const buf = await f.arrayBuffer();
+    const text = new TextDecoder().decode(new Uint8Array(buf));
+    // Heuristic: consider it BASE262144 if every code point falls in our alphabet or escaped form
+    const looksEsc = /^(?:\\u\{[0-9A-Fa-f]+\})+$/.test(text);
+    const looksBase = !looksEsc && [...text].every(ch => { const cp=ch.codePointAt(0); return cp>=CP_START && cp<=CP_END; });
+    if (looksEsc){
+      elIn.value = text; elEscape.checked = true;
+      $('#decode').click();
+    } else if (looksBase){
+      elIn.value = text; elEscape.checked = false;
+      $('#decode').click();
+    } else {
+      // treat file as binary and encode
+      const bytes = new Uint8Array(buf);
+      const out = encodeBase262144(bytes);
+      elIn.value = text; elEscape.checked = false;
+      elOut.value = out; updateStats();
+    }
+  };
+
+  elIn.addEventListener('input', updateStats);
+  elOut.addEventListener('input', updateStats);
+  updateStats();
+  </script>
+</body>
+</html>

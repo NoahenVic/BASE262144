@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "base262144"
+version = "1.0.0"
+description = "Binary-to-text encoding using a 262,144-symbol Unicode alphabet (18 bits per character)"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "NoaxH", email = "" }
+]
+keywords = ["encoding", "unicode", "base64", "codec", "steganography"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Security :: Cryptography",
+  "Topic :: Text Processing :: General"
+]
+
+[project.scripts]
+base262144 = "base262144:main"

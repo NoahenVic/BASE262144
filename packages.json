@@ -1,0 +1,25 @@
+{
+  "name": "base262144",
+  "version": "1.0.0",
+  "description": "Binary-to-text encoding using a 262,144-symbol Unicode alphabet (18 bits per character)",
+  "type": "module",
+  "main": "./base262144.js",
+  "exports": "./base262144.js",
+  "files": [
+    "base262144.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node -e \"import('./base262144.js').then(m=>{const s=m.encode(new TextEncoder().encode('Hello'));console.log('Encoded length:',s.length);})\""
+  },
+  "keywords": [
+    "encoding",
+    "unicode",
+    "base64",
+    "codec",
+    "steganography"
+  ],
+  "author": "Uw Naam",
+  "license": "MIT"
+}
